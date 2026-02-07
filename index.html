@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cheminos: The Molecule Builder</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600&display=swap');
+        
+        body {
+            font-family: 'Fredoka', sans-serif;
+            background-color: #f0fdf4;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        /* Wood Texture for Blocks */
+        .wood-texture {
+            background-color: #f3dcb8;
+            background-image: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23d4a876' fill-opacity='0.4' fill-rule='evenodd'%3E%3Cpath d='M0 38.59l2.83-2.83 1.41 1.41L1.41 40H0v-1.41zM0 1.4l2.83 2.83 1.41-1.41L1.41 0H0v1.41zM38.59 40l-2.83-2.83 1.41-1.41L40 38.59V40h-1.41zM40 1.41l-2.83 2.83-1.41-1.41L38.59 0H40v1.41zM20 18.6l2.83-2.83 1.41 1.41L21.41 20H20v-1.41zM20 21.4l2.83 2.83-1.41-1.41L21.41 20H20v1.41z'/%3E%3C/g%3E%3C/svg%3E");
+            box-shadow: 3px 3px 6px rgba(0,0,0,0.15), inset 1px 1px 2px rgba(255,255,255,0.8);
+            border-radius: 6px;
+        }
+
+        /* The Board Canvas */
+        #game-board {
+            width: 3000px;
+            height: 3000px;
+            position: relative;
+            background-image: radial-gradient(#cbd5e1 2px, transparent 2px);
+            background-size: 40px 40px;
+            background-color: #f8fafc;
+        }
+
+        /* --- DOMINO STYLES --- */
+        
+        /* Base Domino (Hand & Board) */
+        .domino {
+            width: 50px;
+            height: 90px;
+            display: flex;
+            flex-direction: column;
+            border: 2px solid #a18a6e;
+            position: relative;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-sizing: border-box;
+        }
+
+        /* Hand Specifics */
+        .domino-hand {
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        .domino-hand:hover {
+            transform: translateY(-8px);
+            border-color: #3b82f6;
+        }
+        .domino-hand.selected {
+            border: 3px solid #2563eb;
+            box-shadow: 0 0 15px rgba(37, 99, 235, 0.4);
+            transform: translateY(-12px);
+        }
+
+        /* Board Specifics (Positioned Absolute) */
+        .domino-board {
+            position: absolute;
+            z-index: 10;
+            transform-origin: center center;
+        }
+
+        /* Halves */
+        .half-symbol {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: 800;
+            border-bottom: 1px solid #cbbba6;
+        }
+        
+        .half-dots {
+            flex: 1;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 4px;
+        }
+
+        /* Dot Styles */
+        .dot {
+            width: 10px;
+            height: 10px;
+            background-color: #5c4d3c;
+            border-radius: 50%;
+            box-shadow: inset 1px 1px 2px rgba(0,0,0,0.6);
+            transition: background-color 0.3s;
+        }
+        .dot.connected {
+            background-color: #22c55e;
+            box-shadow: 0 0 6px #22c55e, inset 1px 1px 2px rgba(0,0,0,0.2);
+            border: 1px solid #166534;
+        }
+
+        /* Atom Colors */
+        .atom-H { color: #475569; }
+        .atom-C { color: #1e293b; }
+        .atom-O { color: #dc2626; }
+        .atom-N { color: #2563eb; }
+        .atom-Cl, .atom-F { color: #15803d; }
+        .atom-S { color: #d97706; }
+
+        /* Connection Target (Ghost) */
+        .connection-target {
+            width: 40px;
+            height: 40px;
+            position: absolute;
+            z-index: 50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+        }
+        .connection-target::after {
+            content: '+';
+            font-size: 24px;
+            color: #3b82f6;
+            width: 30px;
+            height: 30px;
+            border: 2px dashed #3b82f6;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: rgba(255,255,255,0.8);
+            animation: pulse 1.5s infinite;
+        }
+        .connection-target:hover::after {
+            background: #3b82f6;
+            color: white;
+            border-style: solid;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 0.8; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0.8; }
+        }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col text-slate-800">
+
+    <!-- Header -->
+    <header class="bg-white/90 backdrop-blur-sm shadow p-3 flex justify-between items-center z-30 relative border-b border-slate-200">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-600 text-white w-10 h-10 flex items-center justify-center rounded-lg font-bold text-xl shadow-lg">Cm</div>
+            <div>
+                <h1 class="font-bold text-xl text-slate-800 leading-tight">Cheminos</h1>
+                <p class="text-[10px] text-slate-500 font-medium uppercase tracking-widest">Molecular Dominos</p>
+            </div>
+        </div>
+        
+        <div class="flex gap-4 items-center">
+            <div id="game-status" class="px-4 py-1.5 rounded-full bg-blue-100 text-blue-700 font-bold text-sm border border-blue-200 shadow-sm transition-colors">
+                Your Turn
+            </div>
+            <button onclick="resetGame()" class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition shadow-md active:transform active:scale-95">Restart</button>
+        </div>
+    </header>
+
+    <!-- Game Viewport -->
+    <div class="flex-1 relative overflow-hidden bg-slate-100">
+        
+        <!-- Pannable Container -->
+        <div id="game-board-container" class="absolute inset-0 overflow-auto no-scrollbar cursor-grab active:cursor-grabbing">
+            <div id="game-board">
+                <!-- Blocks injected here -->
+            </div>
+        </div>
+
+        <!-- Bot Hand Visual -->
+        <div class="absolute top-4 left-1/2 transform -translate-x-1/2 flex flex-col items-center z-20 pointer-events-none">
+            <div class="bg-white/90 backdrop-blur px-4 py-1 rounded-t-lg shadow-sm border border-slate-200 text-[10px] font-bold text-slate-400">OPPONENT</div>
+            <div class="bg-white/90 backdrop-blur px-6 py-3 rounded-b-xl rounded-t-md shadow-xl border border-slate-200 flex gap-1">
+                <div id="bot-hand-visual" class="flex gap-1"></div>
+            </div>
+        </div>
+
+        <!-- Notification Overlay -->
+        <div id="notification" class="hidden absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center">
+            <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-sm text-center border-4 border-white transform transition-all scale-100">
+                <div id="notif-icon" class="text-5xl mb-4">🏆</div>
+                <h2 id="notif-title" class="text-3xl font-bold mb-2 text-slate-800">Victory!</h2>
+                <p id="notif-msg" class="text-slate-500 mb-6">You constructed the molecule first.</p>
+                <button onclick="resetGame()" class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-lg transition transform hover:translate-y-[-2px]">Play Again</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Player Deck & Hand -->
+    <div class="bg-white border-t border-slate-200 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] z-30 relative">
+        <div class="max-w-7xl mx-auto flex h-40">
+            
+            <!-- Deck Pile -->
+            <div class="w-24 border-r border-slate-100 flex flex-col items-center justify-center p-2 bg-slate-50">
+                <div id="deck-pile" class="relative w-14 h-20 bg-amber-100 rounded border-2 border-amber-200 border-dashed flex items-center justify-center cursor-pointer hover:bg-amber-200 transition group" onclick="playerDrawCard()">
+                    <span id="deck-count" class="font-bold text-amber-800 text-lg">24</span>
+                    <span class="absolute -top-8 bg-slate-800 text-white text-[10px] py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap">Draw Card</span>
+                </div>
+                <span class="text-[10px] font-bold text-slate-400 mt-2 tracking-wide">SUPPLY</span>
+            </div>
+
+            <!-- Scrollable Hand -->
+            <div class="flex-1 overflow-x-auto no-scrollbar flex items-center px-6">
+                <div id="player-hand" class="flex gap-2">
+                    <!-- Cards injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CONSTANTS ---
+        const GRID_SIZE = 100;
+        const BOARD_CENTER = 1500;
+        
+        const ATOMS = {
+            'H':  { name: 'Hydrogen', valency: 1, class: 'atom-H', count: 20 },
+            'C':  { name: 'Carbon',   valency: 4, class: 'atom-C', count: 6 },
+            'O':  { name: 'Oxygen',   valency: 2, class: 'atom-O', count: 8 },
+            'N':  { name: 'Nitrogen', valency: 3, class: 'atom-N', count: 6 },
+            'Cl': { name: 'Chlorine', valency: 1, class: 'atom-Cl', count: 4 },
+            'S':  { name: 'Sulfur',   valency: 2, class: 'atom-S', count: 4 },
+            'F':  { name: 'Fluorine', valency: 1, class: 'atom-F', count: 4 }
+        };
+
+        // --- STATE ---
+        let deck = [], playerHand = [], botHand = [], placedBlocks = [];
+        let turn = 'player';
+        let selectedIndex = null;
+        let isGameOver = false;
+
+        // --- CORE FUNCTIONS ---
+
+        function initGame() {
+            // 1. Build Deck
+            deck = [];
+            Object.keys(ATOMS).forEach(sym => {
+                for(let i=0; i<ATOMS[sym].count; i++) {
+                    deck.push({ 
+                        uid: Math.random().toString(36).substr(2, 9),
+                        symbol: sym, 
+                        valency: ATOMS[sym].valency 
+                    });
+                }
+            });
+            
+            // Fisher-Yates Shuffle (Better Randomness)
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+
+            // 2. Reset State
+            playerHand = [];
+            botHand = [];
+            placedBlocks = [];
+            selectedIndex = null;
+            isGameOver = false;
+            document.getElementById('notification').classList.add('hidden');
+
+            // 3. Place Starter (Carbon)
+            let startIdx = deck.findIndex(c => c.symbol === 'C');
+            let startCard = startIdx > -1 ? deck.splice(startIdx, 1)[0] : { uid:'start', symbol:'C', valency:4 };
+            placeBlock(startCard, 0, 0, 0, null);
+
+            // 4. Deal Hands (7 cards now for more strategy)
+            for(let i=0; i<7; i++) {
+                if(deck.length) playerHand.push(deck.pop());
+                if(deck.length) botHand.push(deck.pop());
+            }
+
+            // 5. Coin Toss for Turn
+            turn = Math.random() < 0.5 ? 'player' : 'bot';
+
+            updateUI();
+            centerBoard();
+
+            // If Bot starts, trigger it
+            if(turn === 'bot') {
+                setTimeout(botTurn, 1000);
+            }
+        }
+
+        function placeBlock(card, gx, gy, rotation, parentBlock) {
+            const block = {
+                ...card,
+                gx: gx,
+                gy: gy,
+                rotation: rotation,
+                bonds: 0, 
+                parentUid: parentBlock ? parentBlock.uid : null
+            };
+            if (parentBlock) {
+                block.bonds++; 
+            }
+            placedBlocks.push(block);
+            return block;
+        }
+
+        // --- RENDERING ---
+
+        function updateUI() {
+            const board = document.getElementById('game-board');
+            board.innerHTML = '';
+
+            // Render Placed Blocks
+            placedBlocks.forEach(block => {
+                const el = createBoardBlock(block);
+                board.appendChild(el);
+            });
+
+            // Render Targets
+            if (turn === 'player' && selectedIndex !== null && !isGameOver) {
+                renderTargets();
+            }
+
+            // Render Player Hand
+            const handEl = document.getElementById('player-hand');
+            handEl.innerHTML = '';
+            playerHand.forEach((card, idx) => {
+                const el = createHandBlock(card);
+                el.onclick = () => selectCard(idx);
+                if (idx === selectedIndex) el.classList.add('selected');
+                handEl.appendChild(el);
+            });
+
+            // Info
+            document.getElementById('deck-count').innerText = deck.length;
+            const botContainer = document.getElementById('bot-hand-visual');
+            botContainer.innerHTML = '';
+            for(let i=0; i<botHand.length; i++) {
+                const b = document.createElement('div');
+                b.className = 'w-5 h-8 bg-slate-300 rounded border border-slate-400';
+                botContainer.appendChild(b);
+            }
+            
+            // Status
+            const status = document.getElementById('game-status');
+            if(turn === 'player') {
+                status.innerText = "Your Turn";
+                status.className = "px-4 py-1.5 rounded-full bg-blue-100 text-blue-700 font-bold text-sm border border-blue-200 shadow-sm";
+            } else {
+                status.innerText = "Bot Thinking...";
+                status.className = "px-4 py-1.5 rounded-full bg-amber-100 text-amber-700 font-bold text-sm border border-amber-200 shadow-sm animate-pulse";
+            }
+        }
+
+        function createHandBlock(card) {
+            const el = document.createElement('div');
+            el.className = 'domino domino-hand wood-texture';
+            const top = document.createElement('div');
+            top.className = `half-symbol ${ATOMS[card.symbol].class}`;
+            top.innerText = card.symbol;
+            const bot = document.createElement('div');
+            bot.className = 'half-dots';
+            for(let i=0; i<card.valency; i++) {
+                const d = document.createElement('div');
+                d.className = 'dot';
+                bot.appendChild(d);
+            }
+            el.appendChild(top);
+            el.appendChild(bot);
+            return el;
+        }
+
+        function createBoardBlock(block) {
+            const el = document.createElement('div');
+            el.className = 'domino domino-board wood-texture shadow-lg';
+            const px = BOARD_CENTER + (block.gx * GRID_SIZE);
+            const py = BOARD_CENTER + (block.gy * GRID_SIZE);
+            el.style.left = `${px - 25}px`;
+            el.style.top = `${py - 45}px`;
+            el.style.transform = `rotate(${block.rotation}deg)`;
+
+            const top = document.createElement('div');
+            top.className = `half-symbol ${ATOMS[block.symbol].class}`;
+            top.innerText = block.symbol;
+            const bot = document.createElement('div');
+            bot.className = 'half-dots';
+            for(let i=0; i<block.valency; i++) {
+                const d = document.createElement('div');
+                d.className = i < block.bonds ? 'dot connected' : 'dot';
+                bot.appendChild(d);
+            }
+            el.appendChild(top);
+            el.appendChild(bot);
+            return el;
+        }
+
+        function renderTargets() {
+            const board = document.getElementById('game-board');
+            placedBlocks.forEach(parent => {
+                if (parent.bonds < parent.valency) {
+                    const neighbors = [
+                        { dx: 0, dy: -1, rot: 180 },
+                        { dx: 1, dy: 0, rot: 270 },
+                        { dx: 0, dy: 1, rot: 0 },
+                        { dx: -1, dy: 0, rot: 90 }
+                    ];
+                    neighbors.forEach(n => {
+                        const tx = parent.gx + n.dx;
+                        const ty = parent.gy + n.dy;
+                        if (!placedBlocks.some(b => b.gx === tx && b.gy === ty)) {
+                            const target = document.createElement('div');
+                            target.className = 'connection-target';
+                            const px = BOARD_CENTER + (tx * GRID_SIZE);
+                            const py = BOARD_CENTER + (ty * GRID_SIZE);
+                            target.style.left = `${px - 20}px`;
+                            target.style.top = `${py - 20}px`;
+                            target.onclick = () => playerMove(parent, tx, ty, n.rot);
+                            board.appendChild(target);
+                        }
+                    });
+                }
+            });
+        }
+
+        // --- ACTIONS ---
+
+        function selectCard(idx) {
+            if (turn !== 'player') return;
+            selectedIndex = (selectedIndex === idx) ? null : idx;
+            updateUI();
+        }
+
+        function playerDrawCard() {
+            if (turn !== 'player') return;
+            if (deck.length > 0) {
+                playerHand.push(deck.pop());
+                selectedIndex = null;
+                updateUI();
+            } else {
+                turn = 'bot';
+                updateUI();
+                setTimeout(botTurn, 1000);
+            }
+        }
+
+        function playerMove(parent, tx, ty, rot) {
+            const card = playerHand[selectedIndex];
+            parent.bonds++;
+            placeBlock(card, tx, ty, rot, parent);
+            playerHand.splice(selectedIndex, 1);
+            selectedIndex = null;
+            checkWin();
+            if (!isGameOver) {
+                turn = 'bot';
+                updateUI();
+                setTimeout(botTurn, 1500);
+            }
+        }
+
+        function botTurn() {
+            if (isGameOver) return;
+            
+            // --- SMART BOT LOGIC ---
+            
+            // 1. Calculate Open Slots on Board
+            let openSlots = 0;
+            placedBlocks.forEach(p => { openSlots += (p.valency - p.bonds); });
+
+            // 2. Decide Strategy
+            // If LOTS of slots, play CLOSERS (H, Cl, F) to choke the board.
+            // If FEW slots, play OPENERS (C, N, O) to keep game alive for self.
+            const strategy = openSlots > 3 ? 'choke' : 'expand';
+
+            // 3. Find Moves
+            let possibleMoves = [];
+            botHand.forEach((card, idx) => {
+                placedBlocks.forEach(parent => {
+                    if (parent.bonds < parent.valency) {
+                        const neighbors = [
+                            { dx: 0, dy: -1, rot: 180 }, { dx: 1, dy: 0, rot: 270 },
+                            { dx: 0, dy: 1, rot: 0 }, { dx: -1, dy: 0, rot: 90 }
+                        ];
+                        neighbors.forEach(n => {
+                            const tx = parent.gx + n.dx;
+                            const ty = parent.gy + n.dy;
+                            if (!placedBlocks.some(b => b.gx === tx && b.gy === ty)) {
+                                possibleMoves.push({ card, idx, parent, tx, ty, rot: n.rot });
+                            }
+                        });
+                    }
+                });
+            });
+
+            if (possibleMoves.length > 0) {
+                // Filter moves based on strategy
+                let bestMoves = [];
+                if (strategy === 'choke') {
+                    // Look for low valency (1)
+                    bestMoves = possibleMoves.filter(m => m.card.valency === 1);
+                } else {
+                    // Look for high valency (3, 4)
+                    bestMoves = possibleMoves.filter(m => m.card.valency >= 3);
+                }
+
+                // If no strategic moves found, take ANY move
+                if (bestMoves.length === 0) bestMoves = possibleMoves;
+
+                // Pick random from best moves
+                const move = bestMoves[Math.floor(Math.random() * bestMoves.length)];
+                
+                // Execute
+                move.parent.bonds++;
+                placeBlock(move.card, move.tx, move.ty, move.rot, move.parent);
+                botHand.splice(move.idx, 1);
+            } else {
+                // No moves? Draw.
+                if (deck.length > 0) {
+                    botHand.push(deck.pop());
+                }
+            }
+
+            checkWin();
+            if (!isGameOver) {
+                turn = 'player';
+                updateUI();
+            }
+        }
+
+        function checkWin() {
+            if (playerHand.length === 0) {
+                endGame("Victory!", "You constructed the molecule first! 🧪");
+            } else if (botHand.length === 0) {
+                endGame("Defeat", "The Bot finished the molecule before you.");
+            }
+        }
+
+        function endGame(title, msg) {
+            isGameOver = true;
+            document.getElementById('notif-title').innerText = title;
+            document.getElementById('notif-msg').innerText = msg;
+            document.getElementById('notification').classList.remove('hidden');
+            document.getElementById('notif-icon').innerText = title === "Victory!" ? "🧪" : "🤖";
+        }
+
+        function resetGame() {
+            initGame();
+        }
+
+        // --- PANNING ---
+        const container = document.getElementById('game-board-container');
+        let isDown = false, startX, startY, scrollLeft, scrollTop;
+
+        container.addEventListener('mousedown', (e) => {
+            if(e.target.closest('.domino') || e.target.closest('.connection-target')) return;
+            isDown = true;
+            container.classList.add('active');
+            startX = e.pageX - container.offsetLeft;
+            startY = e.pageY - container.offsetTop;
+            scrollLeft = container.scrollLeft;
+            scrollTop = container.scrollTop;
+        });
+        container.addEventListener('mouseleave', () => { isDown = false; });
+        container.addEventListener('mouseup', () => { isDown = false; });
+        container.addEventListener('mousemove', (e) => {
+            if(!isDown) return;
+            e.preventDefault();
+            const x = e.pageX - container.offsetLeft;
+            const y = e.pageY - container.offsetTop;
+            const walkX = (x - startX) * 1.5;
+            const walkY = (y - startY) * 1.5;
+            container.scrollLeft = scrollLeft - walkX;
+            container.scrollTop = scrollTop - walkY;
+        });
+
+        function centerBoard() {
+            container.scrollLeft = (3000 - container.clientWidth) / 2;
+            container.scrollTop = (3000 - container.clientHeight) / 2;
+        }
+
+        window.onload = initGame;
+        window.onresize = centerBoard;
+
+    </script>
+</body>
+</html>
